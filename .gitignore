@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+mlruns/
+models/production/
+models/history/
+data/processed/
+.env
+.DS_Store

@@ -1,0 +1,26 @@
+{
+  "best_model": "ridge",
+  "best_metrics": {
+    "MAE": 16309279.175511165,
+    "RMSE": 22455913.136555687,
+    "MAPE": 40.742532234984594,
+    "TrainSeconds": 0.020335912704467773
+  },
+  "trained_at_utc": "2025-10-24T12:30:07.409969",
+  "features": {
+    "categorical": [
+      "prefecture",
+      "city_ward",
+      "property_type",
+      "building_structure",
+      "age_bucket"
+    ],
+    "numeric": [
+      "building_age_years",
+      "is_tokyo"
+    ]
+  },
+  "train_rows": 13737,
+  "test_rows": 1263,
+  "production_pointer": "/Users/naveedmaqbool/Desktop/real-estate-mlops/models/production/model.joblib"
+}

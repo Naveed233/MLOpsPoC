@@ -1,0 +1,21 @@
+{
+  "generated_at_utc": "20251024T114647Z",
+  "recent_window_days": 1,
+  "latency": {
+    "count": 6,
+    "p50_ms": 3.0,
+    "p95_ms": 3.75,
+    "max_ms": 4.0
+  },
+  "drift_summary": {
+    "numeric_alerts": 0,
+    "categorical_alerts": 0
+  },
+  "drift_csv": "/Users/naveedmaqbool/Desktop/real-estate-mlops/reports/drift_20251024T114647Z.csv",
+  "mae_overall": {
+    "MAE": 6029407.737043485,
+    "matches": 3
+  },
+  "mae_by_ward_rows": 3,
+  "mae_by_ward_csv": "/Users/naveedmaqbool/Desktop/real-estate-mlops/reports/mae_by_ward_20251024T114647Z.csv"
+}

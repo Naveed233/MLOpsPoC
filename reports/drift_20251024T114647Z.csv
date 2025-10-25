@@ -1,0 +1,9 @@
+feature,type,metric,value,status
+effective_area_m2,numeric,PSI,0.0,OK
+building_age_years,numeric,PSI,0.0,OK
+coverage_ratio,numeric,PSI,0.0,OK
+floor_area_ratio,numeric,PSI,0.0,OK
+prefecture,categorical,JSD,0.0,OK
+city_ward,categorical,JSD,0.0,OK
+property_type,categorical,JSD,0.0,OK
+building_structure,categorical,JSD,0.0,OK
