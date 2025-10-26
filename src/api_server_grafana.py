@@ -20,7 +20,6 @@ from typing import Optional
 from enum import Enum
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import joblib
 import numpy as np

@@ -26,8 +26,8 @@ from __future__ import annotations
 import os
 import json
 import argparse
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from datetime import datetime
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -362,7 +362,7 @@ def main():
     if "mae_by_ward_csv" in summary:
         print("  ", summary["mae_by_ward_csv"])
     if latency:
-        print(
+        print(  # noqa: E501
             f"  Latency p50={latency.get('p50_ms', 'n/a'):.0f}ms  p95={latency.get('p95_ms', 'n/a'):.0f}ms  max={latency.get('max_ms', 'n/a'):.0f}ms"
         )
 

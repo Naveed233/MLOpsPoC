@@ -13,11 +13,14 @@ Run:
 """
 
 from __future__ import annotations
-import os, io, json, base64, glob
+import os
+import io
+import json
+import base64
+import glob
 from datetime import datetime
-from typing import List, Tuple
+from typing import Tuple
 
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -194,9 +197,16 @@ def main():
         summary = _load_json_safely(latest_summary)
         drift_csv = summary.get("drift_csv")
         lat = summary.get("latency", {})
-        latency_line = f"Latency p50={lat.get('p50_ms','n/a')}, p95={lat.get('p95_ms','n/a')}, max={lat.get('max_ms','n/a')}"
+        latency_line = (
+            f"Latency p50={lat.get('p50_ms', 'n/a')}, "
+            f"p95={lat.get('p95_ms', 'n/a')}, "
+            f"max={lat.get('max_ms', 'n/a')}"
+        )
         dsum = summary.get("drift_summary", {})
-        drift_alerts = f"Numeric alerts={dsum.get('numeric_alerts',0)}, Categorical alerts={dsum.get('categorical_alerts',0)}"
+        drift_alerts = (
+            f"Numeric alerts={dsum.get('numeric_alerts', 0)}, "
+            f"Categorical alerts={dsum.get('categorical_alerts', 0)}"
+        )
     drift_img, drift_df = chart_drift(drift_csv)
 
     # predictions log charts
@@ -239,7 +249,7 @@ def main():
 <div class="card">
   <h2>Production Model</h2>
   <p>Tag: <b>{prod_tag}</b>, Saved at (UTC): <b>{prod_saved}</b></p>
-  <p>Best in last training run: <b>{best}</b> with MAE={best_metrics.get('MAE','n/a')}, RMSE={best_metrics.get('RMSE','n/a')}, MAPE={best_metrics.get('MAPE','n/a')}%</p>
+  <p>Best in last training run: <b>{best}</b> with MAE={best_metrics.get('MAE', 'n/a')}, RMSE={best_metrics.get('RMSE', 'n/a')}, MAPE={best_metrics.get('MAPE', 'n/a')}%</p>
 </div>
 
 <div class="card">
@@ -263,16 +273,16 @@ def main():
   <h2>Data Drift</h2>
   <p>{drift_alerts}</p>
   <img src="data:image/png;base64,{drift_img}" />
-  <p>Details: {f'<a href="../{drift_csv}" target="_blank"><code>{drift_csv}</code></a>' if drift_csv else '<code>n/a</code>'}</p>
+  <p>Details: {f'<a href="../{drift_csv}" target="_blank"><code>{drift_csv}</code></a>' if drift_csv else '<code>n/a</code>'}</p>  # noqa: E501
 </div>
 
 <div class="card">
   <h2>Artifacts</h2>
   <ul>
-    <li>Training summary: <a href="../models/training_summary.json" target="_blank"><code>models/training_summary.json</code></a></li>
-    <li>Production model: <a href="../models/production/metadata.json" target="_blank"><code>models/production/metadata.json</code></a></li>
-    <li>Production pipeline: <a href="../models/production/model.joblib" target="_blank" download><code>models/production/model.joblib</code></a></li>
-    <li>Prediction logs: <a href="../data/predictions/predictions.jsonl" target="_blank"><code>data/predictions/predictions.jsonl</code></a></li>
+    <li>Training summary: <a href="../models/training_summary.json" target="_blank"><code>models/training_summary.json</code></a></li>  # noqa: E501
+    <li>Production model: <a href="../models/production/metadata.json" target="_blank"><code>models/production/metadata.json</code></a></li>  # noqa: E501
+    <li>Production pipeline: <a href="../models/production/model.joblib" target="_blank" download><code>models/production/model.joblib</code></a></li>  # noqa: E501
+    <li>Prediction logs: <a href="../data/predictions/predictions.jsonl" target="_blank"><code>data/predictions/predictions.jsonl</code></a></li>  # noqa: E501
     <li>Actuals: <a href="../data/actuals/actuals.csv" target="_blank"><code>data/actuals/actuals.csv</code></a></li>
     <li>Baseline profile: <a href="baseline_profile.json" target="_blank"><code>reports/baseline_profile.json</code></a></li>
   </ul>

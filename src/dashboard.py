@@ -43,7 +43,7 @@ def load_json(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
@@ -56,7 +56,7 @@ def load_predictions():
         for line in f:
             try:
                 rows.append(json.loads(line))
-            except:
+            except json.JSONDecodeError:
                 pass
     if not rows:
         return pd.DataFrame()

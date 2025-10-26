@@ -65,7 +65,7 @@ def load_predictions():
         for line in f:
             try:
                 predictions.append(json.loads(line))
-            except:
+            except json.JSONDecodeError:
                 pass
 
     if not predictions:
@@ -186,7 +186,7 @@ def get_git_commit():
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except:
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
         pass
     return "no-git"
 
@@ -298,7 +298,7 @@ def estimate_cost_per_1k(latency_ms):
     request_cost_per_request = 0.20 / 1_000_000
 
     total_per_request = compute_cost_per_request + request_cost_per_request
-    cost_per_1k = total_per_1k = total_per_request * 1000
+    cost_per_1k = total_per_request * 1000
 
     return round(cost_per_1k, 4)
 
