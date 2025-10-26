@@ -169,12 +169,16 @@ jobs:
           with open('models/training_summary.json', 'r') as f:
               summary = json.load(f)
           
-          best = summary['best_model']
-          mae = best['test_metrics']['MAE']
-          mape = best['test_metrics']['MAPE']
+          best_name = summary['best_model']
+          best_metrics = summary['best_metrics']
           
-          print(f'Best Model: {best[\"tag\"]}')
-          print(f'MAE: ¥{mae/1e6:.2f}M')
+          mae = best_metrics['MAE']
+          rmse = best_metrics['RMSE']
+          mape = best_metrics['MAPE']
+          
+          print(f'Best Model: {best_name}')
+          print(f'MAE: ¥{mae:.0f}')
+          print(f'RMSE: ¥{rmse:.0f}')
           print(f'MAPE: {mape:.2f}%')
           
           # Set thresholds
@@ -182,7 +186,7 @@ jobs:
           MAPE_THRESHOLD = 50  # 50%
           
           if mae > MAE_THRESHOLD:
-              print(f'❌ MAE {mae/1e6:.2f}M exceeds threshold {MAE_THRESHOLD/1e6}M')
+              print(f'❌ MAE ¥{mae/1e6:.2f}M exceeds threshold ¥{MAE_THRESHOLD/1e6}M')
               exit(1)
           
           if mape > MAPE_THRESHOLD:
