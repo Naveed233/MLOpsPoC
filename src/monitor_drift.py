@@ -41,10 +41,23 @@ BASELINE_JSON = os.path.join(REPORT_DIR, "baseline_profile.json")
 
 os.makedirs(REPORT_DIR, exist_ok=True)
 
-NUMERIC_FEATURES = ["effective_area_m2", "building_age_years", "coverage_ratio", "floor_area_ratio", "is_tokyo"]
-CATEGORICAL_FEATURES = ["prefecture", "city_ward", "property_type", "building_structure", "age_bucket"]
+NUMERIC_FEATURES = [
+    "effective_area_m2",
+    "building_age_years",
+    "coverage_ratio",
+    "floor_area_ratio",
+    "is_tokyo",
+]
+CATEGORICAL_FEATURES = [
+    "prefecture",
+    "city_ward",
+    "property_type",
+    "building_structure",
+    "age_bucket",
+]
 
 # ------------------- Utilities -------------------
+
 
 def _read_jsonl(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
@@ -69,12 +82,14 @@ def _read_jsonl(path: str) -> pd.DataFrame:
     df = df.dropna(subset=["ts_utc"]).sort_values("ts_utc")
     return df
 
+
 def _time_window(df: pd.DataFrame, days: int) -> pd.DataFrame:
     if df.empty:
         return df
     end = df["ts_utc"].max()
     start = end - pd.Timedelta(days=days)
     return df[(df["ts_utc"] > start) & (df["ts_utc"] <= end)].copy()
+
 
 def _hist_numeric(s: pd.Series, bins: int = 20) -> Tuple[np.ndarray, np.ndarray]:
     s = pd.to_numeric(s, errors="coerce").dropna()
@@ -84,6 +99,7 @@ def _hist_numeric(s: pd.Series, bins: int = 20) -> Tuple[np.ndarray, np.ndarray]
     p = hist / max(hist.sum(), 1)
     return p, edges
 
+
 def _freq_categorical(s: pd.Series) -> Dict[str, float]:
     s = s.dropna().astype(str)
     if s.empty:
@@ -92,6 +108,7 @@ def _freq_categorical(s: pd.Series) -> Dict[str, float]:
     p = (counts / counts.sum()).to_dict()
     return p
 
+
 def _psi(p: np.ndarray, q: np.ndarray, eps: float = 1e-12) -> float:
     """
     Population Stability Index for numeric histograms p (baseline) vs q (recent)
@@ -99,6 +116,7 @@ def _psi(p: np.ndarray, q: np.ndarray, eps: float = 1e-12) -> float:
     p = np.clip(p, eps, 1)
     q = np.clip(q, eps, 1)
     return float(((q - p) * np.log(q / p)).sum())
+
 
 def _jsd(p_map: Dict[str, float], q_map: Dict[str, float], eps: float = 1e-12) -> float:
     """
@@ -111,6 +129,7 @@ def _jsd(p_map: Dict[str, float], q_map: Dict[str, float], eps: float = 1e-12) -
     q = q / max(q.sum(), 1)
     # jensenshannon returns distance in [0,1]
     return float(jensenshannon(p + eps, q + eps))
+
 
 def _latency_stats(df: pd.DataFrame) -> Dict[str, float]:
     if "latency_ms" not in df.columns:
@@ -125,6 +144,7 @@ def _latency_stats(df: pd.DataFrame) -> Dict[str, float]:
         "max_ms": float(np.max(s)),
     }
 
+
 def _load_actuals() -> pd.DataFrame:
     if not os.path.exists(ACTUALS_CSV):
         return pd.DataFrame()
@@ -134,7 +154,9 @@ def _load_actuals() -> pd.DataFrame:
         return pd.DataFrame()
     return df
 
+
 # ------------------- Baseline Profile -------------------
+
 
 def create_baseline(df_win: pd.DataFrame, path: str) -> None:
     """
@@ -145,7 +167,11 @@ def create_baseline(df_win: pd.DataFrame, path: str) -> None:
     for col in NUMERIC_FEATURES:
         if col in df_win.columns:
             p, edges = _hist_numeric(df_win[col])
-            profile["features"][col] = {"type": "numeric", "hist": p.tolist(), "edges": edges.tolist()}
+            profile["features"][col] = {
+                "type": "numeric",
+                "hist": p.tolist(),
+                "edges": edges.tolist(),
+            }
 
     for col in CATEGORICAL_FEATURES:
         if col in df_win.columns:
@@ -157,14 +183,19 @@ def create_baseline(df_win: pd.DataFrame, path: str) -> None:
 
     print(f"[OK] Baseline saved: {path}")
 
+
 def load_baseline(path: str) -> dict:
     if not os.path.exists(path):
-        raise SystemExit(f"[ERROR] Baseline profile not found: {path}\n"
-                         f"Create it first with: python src/monitor_drift.py --create-baseline")
+        raise SystemExit(
+            f"[ERROR] Baseline profile not found: {path}\n"
+            f"Create it first with: python src/monitor_drift.py --create-baseline"
+        )
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
 # ------------------- Drift Computation -------------------
+
 
 def compute_drift(baseline: dict, df_recent: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, float]]:
     rows = []
@@ -192,11 +223,21 @@ def compute_drift(baseline: dict, df_recent: pd.DataFrame) -> Tuple[pd.DataFrame
                     summary["numeric_alerts"] += 1
                 elif psi >= PSI_WARN:
                     status = "WARN"
-            rows.append({"feature": feat, "type": "numeric", "metric": "PSI", "value": psi, "status": status})
+            rows.append(
+                {
+                    "feature": feat,
+                    "type": "numeric",
+                    "metric": "PSI",
+                    "value": psi,
+                    "status": status,
+                }
+            )
 
         elif meta["type"] == "categorical":
             base_freq = meta["freq"]
-            recent_freq = _freq_categorical(df_recent.get(feat)) if feat in df_recent.columns else {}
+            recent_freq = (
+                _freq_categorical(df_recent.get(feat)) if feat in df_recent.columns else {}
+            )
             jsd = _jsd(base_freq, recent_freq) if base_freq or recent_freq else float("nan")
             status = "OK"
             if np.isfinite(jsd):
@@ -205,13 +246,25 @@ def compute_drift(baseline: dict, df_recent: pd.DataFrame) -> Tuple[pd.DataFrame
                     summary["categorical_alerts"] += 1
                 elif jsd >= JSD_WARN:
                     status = "WARN"
-            rows.append({"feature": feat, "type": "categorical", "metric": "JSD", "value": jsd, "status": status})
+            rows.append(
+                {
+                    "feature": feat,
+                    "type": "categorical",
+                    "metric": "JSD",
+                    "value": jsd,
+                    "status": status,
+                }
+            )
 
     return pd.DataFrame(rows), summary
 
+
 # ------------------- MAE with Actuals (optional) -------------------
 
-def compute_mae_with_actuals(df_recent: pd.DataFrame, actuals: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, float]]:
+
+def compute_mae_with_actuals(
+    df_recent: pd.DataFrame, actuals: pd.DataFrame
+) -> Tuple[pd.DataFrame, Dict[str, float]]:
     """
     Join on 'external_id' to compute MAE overall and by ward.
     You must include external_id in API requests to use this.
@@ -229,17 +282,31 @@ def compute_mae_with_actuals(df_recent: pd.DataFrame, actuals: pd.DataFrame) -> 
 
     join["abs_err"] = (join["sale_price_yen"] - join["prediction_yen"]).abs()
     overall = {"MAE": float(join["abs_err"].mean()), "matches": int(len(join))}
-    by_ward = join.groupby("city_ward")["abs_err"].mean().sort_values().reset_index().rename(columns={"abs_err": "MAE"})
+    by_ward = (
+        join.groupby("city_ward")["abs_err"]
+        .mean()
+        .sort_values()
+        .reset_index()
+        .rename(columns={"abs_err": "MAE"})
+    )
     return by_ward, overall
+
 
 # ------------------- Main -------------------
 
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--create-baseline", action="store_true", help="Create or overwrite baseline from baseline window")
+    ap.add_argument(
+        "--create-baseline",
+        action="store_true",
+        help="Create or overwrite baseline from baseline window",
+    )
     ap.add_argument("--baseline-window-days", type=int, default=30, help="Days for baseline window")
     ap.add_argument("--recent-window-days", type=int, default=7, help="Days for recent window")
-    ap.add_argument("--with-actuals", action="store_true", help="Join with outcomes if available to compute MAE")
+    ap.add_argument(
+        "--with-actuals", action="store_true", help="Join with outcomes if available to compute MAE"
+    )
     args = ap.parse_args()
 
     df = _read_jsonl(PRED_LOG)
@@ -295,8 +362,10 @@ def main():
     if "mae_by_ward_csv" in summary:
         print("  ", summary["mae_by_ward_csv"])
     if latency:
-        print(f"  Latency p50={latency.get('p50_ms', 'n/a'):.0f}ms  p95={latency.get('p95_ms', 'n/a'):.0f}ms  max={latency.get('max_ms', 'n/a'):.0f}ms")
+        print(
+            f"  Latency p50={latency.get('p50_ms', 'n/a'):.0f}ms  p95={latency.get('p95_ms', 'n/a'):.0f}ms  max={latency.get('max_ms', 'n/a'):.0f}ms"
+        )
+
 
 if __name__ == "__main__":
     main()
-

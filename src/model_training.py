@@ -37,6 +37,7 @@ import mlflow
 # Try to use xgboost if available
 try:
     from xgboost import XGBRegressor
+
     HAS_XGB = True
 except Exception:
     HAS_XGB = False
@@ -46,11 +47,11 @@ except Exception:
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROC_DIR = os.path.join(BASE_DIR, "data", "processed")
 TRAIN_CSV = os.path.join(PROC_DIR, "processed_train.csv")
-TEST_CSV  = os.path.join(PROC_DIR, "processed_test.csv")
+TEST_CSV = os.path.join(PROC_DIR, "processed_test.csv")
 
 MODELS_DIR = os.path.join(BASE_DIR, "models")
-HIST_DIR   = os.path.join(MODELS_DIR, "history")
-PROD_DIR   = os.path.join(MODELS_DIR, "production")
+HIST_DIR = os.path.join(MODELS_DIR, "history")
+PROD_DIR = os.path.join(MODELS_DIR, "production")
 os.makedirs(HIST_DIR, exist_ok=True)
 os.makedirs(PROD_DIR, exist_ok=True)
 
@@ -60,9 +61,11 @@ EXPERIMENT_NAME = "price_estimation_mlit"
 # ---------------- helpers ----------------
 def load_data(train_path: str, test_path: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     if not os.path.exists(train_path) or not os.path.exists(test_path):
-        raise SystemExit(f"[ERROR] Processed CSVs not found. Run data_prep.py first.\nPaths:\n  {train_path}\n  {test_path}")
+        raise SystemExit(
+            f"[ERROR] Processed CSVs not found. Run data_prep.py first.\nPaths:\n  {train_path}\n  {test_path}"
+        )
     train = pd.read_csv(train_path)
-    test  = pd.read_csv(test_path)
+    test = pd.read_csv(test_path)
     return train, test
 
 
@@ -90,21 +93,21 @@ def pick_features(df_cols: List[str]) -> Tuple[List[str], List[str]]:
     return cats, nums
 
 
-def build_pipeline(model_name: str,
-                   numeric_features: List[str],
-                   categorical_features: List[str]):
+def build_pipeline(model_name: str, numeric_features: List[str], categorical_features: List[str]):
     """
     Returns a sklearn Pipeline with preprocessing + estimator.
     """
     numeric_tf = Pipeline(steps=[("scaler", StandardScaler())])
-    categorical_tf = Pipeline(steps=[("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False))])
+    categorical_tf = Pipeline(
+        steps=[("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False))]
+    )
 
     preproc = ColumnTransformer(
         transformers=[
             ("num", numeric_tf, numeric_features),
             ("cat", categorical_tf, categorical_features),
         ],
-        remainder="drop"
+        remainder="drop",
     )
 
     if model_name == "ridge":
@@ -138,7 +141,9 @@ def metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     return {"MAE": mae, "RMSE": rmse, "MAPE": mape}
 
 
-def log_run_to_mlflow(model_name: str, run_params: Dict, run_metrics: Dict, artifacts_dir: str, model_pipeline):
+def log_run_to_mlflow(
+    model_name: str, run_params: Dict, run_metrics: Dict, artifacts_dir: str, model_pipeline
+):
     mlflow.set_experiment(EXPERIMENT_NAME)
     with mlflow.start_run(run_name=model_name):
         # params
@@ -161,7 +166,9 @@ def log_run_to_mlflow(model_name: str, run_params: Dict, run_metrics: Dict, arti
         mlflow.log_artifact(readme_path, artifact_path="model_card")
 
 
-def save_as_history_and_maybe_promote(tag: str, model_pipeline, test_metrics: Dict[str, float]) -> str:
+def save_as_history_and_maybe_promote(
+    tag: str, model_pipeline, test_metrics: Dict[str, float]
+) -> str:
     """
     Save model to models/history/<timestamp>_<tag>/model.joblib
     If best MAE so far, copy to models/production/model.joblib and write a small metadata.json
@@ -204,10 +211,15 @@ def save_as_history_and_maybe_promote(tag: str, model_pipeline, test_metrics: Di
     return run_dir
 
 
-def train_one(model_name: str,
-              X_train: pd.DataFrame, y_train: np.ndarray,
-              X_test: pd.DataFrame, y_test: np.ndarray,
-              cats: List[str], nums: List[str]) -> Tuple[Pipeline, Dict[str, float]]:
+def train_one(
+    model_name: str,
+    X_train: pd.DataFrame,
+    y_train: np.ndarray,
+    X_test: pd.DataFrame,
+    y_test: np.ndarray,
+    cats: List[str],
+    nums: List[str],
+) -> Tuple[Pipeline, Dict[str, float]]:
     pipe = build_pipeline(model_name, numeric_features=nums, categorical_features=cats)
 
     # Fit
@@ -247,12 +259,12 @@ def main():
 
     # drop rows with missing target
     train_df = train_df[train_df[target].notna()].copy()
-    test_df  = test_df[test_df[target].notna()].copy()
+    test_df = test_df[test_df[target].notna()].copy()
 
     X_train = train_df[cats + nums]
     y_train = train_df[target].astype(float).values
-    X_test  = test_df[cats + nums]
-    y_test  = test_df[target].astype(float).values
+    X_test = test_df[cats + nums]
+    y_test = test_df[target].astype(float).values
 
     # For MLflow artifacts
     run_artifacts_dir = os.path.join(HIST_DIR, "__tmp_artifacts__")
@@ -291,7 +303,9 @@ def main():
     best_name, best_metrics, best_dir = results[0]
     print("\n[SUMMARY] Test-set metrics")
     for name, m, d in results:
-        print(f"  {name:5s}  MAE={m['MAE']:.0f}  RMSE={m['RMSE']:.0f}  MAPE={m['MAPE']:.2f}%  -> {d}")
+        print(
+            f"  {name:5s}  MAE={m['MAE']:.0f}  RMSE={m['RMSE']:.0f}  MAPE={m['MAPE']:.2f}%  -> {d}"
+        )
 
     # Write summary json
     summary = {
@@ -310,12 +324,13 @@ def main():
     shutil.rmtree(run_artifacts_dir, ignore_errors=True)
 
     print("\n[OK] Training finished.")
-    print(f"Best: {best_name}  MAE={best_metrics['MAE']:.0f}  RMSE={best_metrics['RMSE']:.0f}  MAPE={best_metrics['MAPE']:.2f}%")
+    print(
+        f"Best: {best_name}  MAE={best_metrics['MAE']:.0f}  RMSE={best_metrics['RMSE']:.0f}  MAPE={best_metrics['MAPE']:.2f}%"
+    )
     print(f"Production pointer: {summary['production_pointer']}")
     print("MLflow tracking dir:", os.environ.get("MLFLOW_TRACKING_URI", "<unset>"))
     print("Inspect runs with:   mlflow ui   (then open http://127.0.0.1:5000)")
-    
+
 
 if __name__ == "__main__":
     main()
-

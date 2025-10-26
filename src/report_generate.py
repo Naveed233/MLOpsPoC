@@ -23,20 +23,22 @@ import matplotlib.pyplot as plt
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
-HIST_DIR   = os.path.join(MODELS_DIR, "history")
-PROD_DIR   = os.path.join(MODELS_DIR, "production")
-REPORTS_DIR= os.path.join(BASE_DIR, "reports")
-PRED_LOG   = os.path.join(BASE_DIR, "data", "predictions", "predictions.jsonl")
+HIST_DIR = os.path.join(MODELS_DIR, "history")
+PROD_DIR = os.path.join(MODELS_DIR, "production")
+REPORTS_DIR = os.path.join(BASE_DIR, "reports")
+PRED_LOG = os.path.join(BASE_DIR, "data", "predictions", "predictions.jsonl")
 
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 # ------- helpers -------
+
 
 def _b64_png(fig) -> str:
     bio = io.BytesIO()
     fig.savefig(bio, format="png", bbox_inches="tight")
     plt.close(fig)
     return base64.b64encode(bio.getvalue()).decode("ascii")
+
 
 def _load_json_safely(path: str):
     try:
@@ -45,11 +47,13 @@ def _load_json_safely(path: str):
     except Exception:
         return {}
 
+
 def _latest_file(pattern: str) -> str | None:
     files = glob.glob(pattern)
     if not files:
         return None
     return max(files, key=os.path.getmtime)
+
 
 def _read_predictions() -> pd.DataFrame:
     if not os.path.exists(PRED_LOG):
@@ -75,14 +79,16 @@ def _read_predictions() -> pd.DataFrame:
         df = df.dropna(subset=["ts_utc"]).sort_values("ts_utc")
     return df
 
+
 # ------- charts -------
+
 
 def chart_model_history() -> Tuple[str, pd.DataFrame]:
     rows = []
     for run_dir in sorted(glob.glob(os.path.join(HIST_DIR, "*_*"))):
         meta = _load_json_safely(os.path.join(run_dir, "metadata.json"))
         ts = meta.get("saved_at_utc")
-        mae = ((meta.get("test_metrics") or {}).get("MAE"))
+        mae = (meta.get("test_metrics") or {}).get("MAE")
         tag = meta.get("tag", "unknown")
         if ts and mae is not None:
             rows.append({"saved_at_utc": ts, "MAE": float(mae), "tag": tag})
@@ -103,6 +109,7 @@ def chart_model_history() -> Tuple[str, pd.DataFrame]:
     fig.autofmt_xdate()
     return _b64_png(fig), df
 
+
 def chart_latency(df_pred: pd.DataFrame) -> str:
     if df_pred.empty or "latency_ms" not in df_pred.columns:
         fig = plt.figure()
@@ -116,6 +123,7 @@ def chart_latency(df_pred: pd.DataFrame) -> str:
     ax.set_xlabel("ms")
     ax.set_ylabel("count")
     return _b64_png(fig)
+
 
 def chart_volume(df_pred: pd.DataFrame) -> str:
     if df_pred.empty or "ts_utc" not in df_pred.columns:
@@ -134,6 +142,7 @@ def chart_volume(df_pred: pd.DataFrame) -> str:
     fig.autofmt_xdate()
     return _b64_png(fig)
 
+
 def chart_price_hist(df_pred: pd.DataFrame) -> str:
     if df_pred.empty or "prediction_yen" not in df_pred.columns:
         fig = plt.figure()
@@ -147,6 +156,7 @@ def chart_price_hist(df_pred: pd.DataFrame) -> str:
     ax.set_xlabel("yen")
     ax.set_ylabel("count")
     return _b64_png(fig)
+
 
 def chart_drift(drift_csv_path: str | None) -> Tuple[str, pd.DataFrame]:
     if not drift_csv_path or not os.path.exists(drift_csv_path):
@@ -163,7 +173,9 @@ def chart_drift(drift_csv_path: str | None) -> Tuple[str, pd.DataFrame]:
     ax.set_xlabel("metric value")
     return _b64_png(fig), df
 
+
 # ------- main -------
+
 
 def main():
     # training summary & prod meta
@@ -275,6 +287,6 @@ def main():
         f.write(html)
     print(f"[OK] Report written: {out_html}")
 
+
 if __name__ == "__main__":
     main()
-
