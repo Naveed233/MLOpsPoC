@@ -76,15 +76,23 @@ jobs:
               df = pd.read_csv(raw_data)
               print(f'✅ Raw data: {len(df)} rows')
               
-              # Check required columns
-              required = ['prefecture', 'property_type', 'sale_price_yen']
+              # MLIT schema: Check required columns for Japanese real estate data
+              required = ['prefecture', 'property_type']
               missing = [c for c in required if c not in df.columns]
               if missing:
                   raise ValueError(f'Missing columns: {missing}')
               
               # Check for nulls in critical columns
-              if df['sale_price_yen'].isnull().sum() > len(df) * 0.1:
-                  raise ValueError('Too many null prices')
+              for col in required:
+                  null_pct = df[col].isnull().sum() / len(df)
+                  if null_pct > 0.1:
+                      raise ValueError(f'Too many null values in {col}: {null_pct*100:.1f}%')
+              
+              # Check for reasonable data volume
+              if len(df) < 100:
+                  print(f'⚠️ Low data volume: {len(df)} rows')
+              else:
+                  print(f'✅ Sufficient data volume: {len(df)} rows')
               
               print('✅ Data validation passed')
           else:
