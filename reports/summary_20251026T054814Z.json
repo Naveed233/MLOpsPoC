@@ -1,0 +1,17 @@
+{
+  "generated_at_utc": "20251026T054814Z",
+  "recent_window_days": 7,
+  "latency": {
+    "count": 130,
+    "p50_ms": 3.0,
+    "p95_ms": 4.0,
+    "max_ms": 1632.08
+  },
+  "drift_summary": {
+    "numeric_alerts": 4,
+    "categorical_alerts": 1
+  },
+  "drift_csv": "/Users/naveedmaqbool/Desktop/real-estate-mlops/reports/drift_20251026T054814Z.csv",
+  "mae_overall": {},
+  "mae_by_ward_rows": 0
+}

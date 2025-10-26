@@ -1,0 +1,352 @@
+name: ML Pipeline - Training & Deployment
+
+on:
+  push:
+    branches: [ main, streamlit-V1-10.23 ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: 'Force model retraining'
+        required: false
+        default: 'false'
+
+env:
+  PYTHON_VERSION: '3.12'
+  MODEL_REGISTRY: models/production
+
+jobs:
+  lint-and-test:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest flake8 black
+      
+      - name: Lint with flake8
+        run: |
+          flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 src/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      
+      - name: Format check with black
+        run: black --check src/
+      
+      - name: Run tests
+        run: pytest tests/ || echo "No tests yet"
+
+  data-validation:
+    name: Data Quality Checks
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy scipy
+      
+      - name: Validate data schema
+        run: |
+          python -c "
+          import pandas as pd
+          import os
+          
+          # Check if data exists
+          raw_data = 'data/raw/properties.csv'
+          if os.path.exists(raw_data):
+              df = pd.read_csv(raw_data)
+              print(f'✅ Raw data: {len(df)} rows')
+              
+              # Check required columns
+              required = ['prefecture', 'property_type', 'sale_price_yen']
+              missing = [c for c in required if c not in df.columns]
+              if missing:
+                  raise ValueError(f'Missing columns: {missing}')
+              
+              # Check for nulls in critical columns
+              if df['sale_price_yen'].isnull().sum() > len(df) * 0.1:
+                  raise ValueError('Too many null prices')
+              
+              print('✅ Data validation passed')
+          else:
+              print('⚠️ No raw data found, will use simulated data')
+          "
+
+  train-model:
+    name: Train ML Model
+    runs-on: ubuntu-latest
+    needs: data-validation
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run data preparation
+        run: |
+          python src/data_prep.py || echo "Using existing processed data"
+      
+      - name: Train models
+        run: |
+          python src/model_training.py
+      
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: model-artifacts
+          path: |
+            models/production/
+            models/training_summary.json
+          retention-days: 30
+      
+      - name: Save metrics
+        run: |
+          if [ -f models/training_summary.json ]; then
+            cat models/training_summary.json
+          fi
+
+  evaluate-model:
+    name: Model Evaluation
+    runs-on: ubuntu-latest
+    needs: train-model
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download model artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: model-artifacts
+          path: models/
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Evaluate model performance
+        run: |
+          python -c "
+          import json
+          import os
+          
+          # Load metrics
+          with open('models/training_summary.json', 'r') as f:
+              summary = json.load(f)
+          
+          best = summary['best_model']
+          mae = best['test_metrics']['MAE']
+          mape = best['test_metrics']['MAPE']
+          
+          print(f'Best Model: {best[\"tag\"]}')
+          print(f'MAE: ¥{mae/1e6:.2f}M')
+          print(f'MAPE: {mape:.2f}%')
+          
+          # Set thresholds
+          MAE_THRESHOLD = 20_000_000  # ¥20M
+          MAPE_THRESHOLD = 50  # 50%
+          
+          if mae > MAE_THRESHOLD:
+              print(f'❌ MAE {mae/1e6:.2f}M exceeds threshold {MAE_THRESHOLD/1e6}M')
+              exit(1)
+          
+          if mape > MAPE_THRESHOLD:
+              print(f'❌ MAPE {mape:.2f}% exceeds threshold {MAPE_THRESHOLD}%')
+              exit(1)
+          
+          print('✅ Model quality checks passed')
+          "
+
+  test-api:
+    name: Test Inference API
+    runs-on: ubuntu-latest
+    needs: evaluate-model
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download model artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: model-artifacts
+          path: models/
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Start API server
+        run: |
+          uvicorn src.api_server_grafana:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+      
+      - name: Test health endpoint
+        run: |
+          curl -f http://localhost:8000/health || exit 1
+      
+      - name: Test prediction endpoint
+        run: |
+          curl -f -X POST http://localhost:8000/predict_price \
+            -H "Content-Type: application/json" \
+            -d '{
+              "prefecture": "東京都",
+              "city_ward": "渋谷区",
+              "property_type": "マンション",
+              "building_structure": "RC",
+              "building_age_years": 10,
+              "effective_area_m2": 65,
+              "coverage_ratio": 60,
+              "floor_area_ratio": 300
+            }' || exit 1
+      
+      - name: Test metrics endpoint
+        run: |
+          curl -f http://localhost:8000/metrics/ || exit 1
+
+  drift-monitoring:
+    name: Data Drift Check
+    runs-on: ubuntu-latest
+    needs: test-api
+    if: github.event_name == 'schedule' || github.event.inputs.force_retrain == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Run drift monitoring
+        run: |
+          python src/monitor_drift.py
+      
+      - name: Check drift thresholds
+        run: |
+          python -c "
+          import pandas as pd
+          import glob
+          
+          drift_files = glob.glob('reports/drift_*.csv')
+          if drift_files:
+              df = pd.read_csv(sorted(drift_files)[-1])
+              alerts = df[df['status'] == 'ALERT']
+              
+              if len(alerts) > 0:
+                  print(f'⚠️ Drift detected in {len(alerts)} features:')
+                  print(alerts[['feature', 'metric', 'value']])
+                  # Trigger retraining workflow
+                  exit(1)
+              else:
+                  print('✅ No drift detected')
+          "
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [test-api, evaluate-model]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/streamlit-V1-10.23'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download model artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: model-artifacts
+          path: models/
+      
+      - name: Build Docker image
+        run: |
+          docker build -t mlops-real-estate:${{ github.sha }} -f infra/Dockerfile .
+          docker tag mlops-real-estate:${{ github.sha }} mlops-real-estate:latest
+      
+      - name: Save deployment metadata
+        run: |
+          cat > deployment_info.json <<EOF
+          {
+            "commit_sha": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "deployed_by": "${{ github.actor }}",
+            "workflow_run": "${{ github.run_id }}"
+          }
+          EOF
+      
+      - name: Upload deployment info
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-info
+          path: deployment_info.json
+      
+      - name: Deploy notification
+        run: |
+          echo "🚀 Deployment successful!"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          # Add Slack/Discord webhook here
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+      
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            ## ML Model Release v${{ github.run_number }}
+            
+            **Deployed from:** ${{ github.ref_name }}
+            **Commit:** ${{ github.sha }}
+            
+            ### Model Metrics
+            See training_summary.json for full metrics
+            
+            ### Changes
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+

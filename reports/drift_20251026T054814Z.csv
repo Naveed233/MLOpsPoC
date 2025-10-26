@@ -1,0 +1,9 @@
+feature,type,metric,value,status
+effective_area_m2,numeric,PSI,14.956119025425794,ALERT
+building_age_years,numeric,PSI,17.706292399072844,ALERT
+coverage_ratio,numeric,PSI,16.995822508496524,ALERT
+floor_area_ratio,numeric,PSI,15.223573818728775,ALERT
+prefecture,categorical,JSD,0.13010608330476142,OK
+city_ward,categorical,JSD,0.423657430259762,ALERT
+property_type,categorical,JSD,0.019427662949676693,OK
+building_structure,categorical,JSD,0.13890972538546056,OK

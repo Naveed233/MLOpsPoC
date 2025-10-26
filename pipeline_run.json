@@ -1,0 +1,19 @@
+{
+  "run_at": "2025-10-26T05:48:18.811278",
+  "elapsed_seconds": 18.390698432922363,
+  "results": {
+    "data_prep": {
+      "success": false
+    },
+    "training": {
+      "success": true
+    },
+    "drift_monitoring": {
+      "success": true
+    },
+    "reports": {
+      "success": true
+    }
+  },
+  "success": false
+}

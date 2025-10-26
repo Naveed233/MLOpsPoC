@@ -4,9 +4,9 @@
     "MAE": 16309279.175511165,
     "RMSE": 22455913.136555687,
     "MAPE": 40.742532234984594,
-    "TrainSeconds": 0.020335912704467773
+    "TrainSeconds": 0.02832508087158203
   },
-  "trained_at_utc": "2025-10-24T12:30:07.409969",
+  "trained_at_utc": "2025-10-26T05:48:12.831963",
   "features": {
     "categorical": [
       "prefecture",

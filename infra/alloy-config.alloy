@@ -1,0 +1,200 @@
+// Grafana Alloy Configuration for ML Monitoring
+// Deploy to: /etc/alloy/config.alloy
+
+/********************************************
+ * CONSTANTS
+ ********************************************/
+constants {
+    hostname = "mlops-real-estate"
+}
+
+/********************************************
+ * PROMETHEUS REMOTE WRITE (Grafana Cloud)
+ ********************************************/
+prometheus.remote_write "metrics_service" {
+    endpoint {
+        url = env("GRAFANA_METRICS_URL")
+        
+        basic_auth {
+            username = env("GRAFANA_METRICS_ID")
+            password = env("GRAFANA_API_KEY")
+        }
+    }
+}
+
+/********************************************
+ * LOKI REMOTE WRITE (Logs to Grafana Cloud)
+ ********************************************/
+loki.write "grafana_cloud_loki" {
+    endpoint {
+        url = env("GRAFANA_LOGS_URL")
+        
+        basic_auth {
+            username = env("GRAFANA_LOGS_ID")
+            password = env("GRAFANA_API_KEY")
+        }
+    }
+}
+
+/********************************************
+ * ML API METRICS (FastAPI /metrics endpoint)
+ ********************************************/
+prometheus.scrape "ml_api" {
+    targets = [{
+        __address__ = "localhost:8000",
+    }]
+    
+    forward_to = [prometheus.remote_write.metrics_service.receiver]
+    scrape_interval = "15s"
+    metrics_path = "/metrics"
+    
+    // Add labels
+    clustering {
+        enabled = false
+    }
+}
+
+discovery.relabel "ml_api" {
+    targets = [{
+        __address__ = "localhost:8000",
+    }]
+    
+    rule {
+        target_label = "job"
+        replacement  = "ml-inference-api"
+    }
+    
+    rule {
+        target_label = "instance"
+        replacement  = constants.hostname
+    }
+    
+    rule {
+        target_label = "service"
+        replacement  = "real-estate-price-engine"
+    }
+}
+
+/********************************************
+ * DOCKER CONTAINER METRICS (cAdvisor)
+ ********************************************/
+prometheus.exporter.cadvisor "integrations_cadvisor" {
+    docker_only = true
+}
+
+discovery.relabel "integrations_cadvisor" {
+    targets = prometheus.exporter.cadvisor.integrations_cadvisor.targets
+
+    rule {
+        target_label = "job"
+        replacement  = "integrations/docker"
+    }
+
+    rule {
+        target_label = "instance"
+        replacement  = constants.hostname
+    }
+}
+
+prometheus.scrape "integrations_cadvisor" {
+    targets    = discovery.relabel.integrations_cadvisor.output
+    forward_to = [prometheus.remote_write.metrics_service.receiver]
+}
+
+/********************************************
+ * DOCKER CONTAINER LOGS
+ ********************************************/
+discovery.docker "logs_integrations_docker" {
+    host             = "unix:///var/run/docker.sock"
+    refresh_interval = "5s"
+}
+
+discovery.relabel "logs_integrations_docker" {
+    targets = discovery.docker.logs_integrations_docker.targets
+
+    rule {
+        target_label = "job"
+        replacement  = "integrations/docker"
+    }
+
+    rule {
+        target_label = "instance"
+        replacement  = constants.hostname
+    }
+
+    rule {
+        source_labels = ["__meta_docker_container_name"]
+        regex         = "/(.*)"
+        target_label  = "container"
+    }
+
+    rule {
+        source_labels = ["__meta_docker_container_log_stream"]
+        target_label  = "stream"
+    }
+}
+
+loki.source.docker "logs_integrations_docker" {
+    host             = "unix:///var/run/docker.sock"
+    targets          = discovery.docker.logs_integrations_docker.targets
+    forward_to       = [loki.write.grafana_cloud_loki.receiver]
+    relabel_rules    = discovery.relabel.logs_integrations_docker.rules
+    refresh_interval = "5s"
+}
+
+/********************************************
+ * SYSTEM METRICS (Node Exporter)
+ ********************************************/
+prometheus.exporter.unix "integrations_node_exporter" {
+    disable_collectors = ["mdadm"]
+}
+
+discovery.relabel "integrations_node_exporter" {
+    targets = prometheus.exporter.unix.integrations_node_exporter.targets
+
+    rule {
+        target_label = "job"
+        replacement  = "integrations/node_exporter"
+    }
+
+    rule {
+        target_label = "instance"
+        replacement  = constants.hostname
+    }
+}
+
+prometheus.scrape "integrations_node_exporter" {
+    targets    = discovery.relabel.integrations_node_exporter.output
+    forward_to = [prometheus.remote_write.metrics_service.receiver]
+    scrape_interval = "15s"
+}
+
+/********************************************
+ * APPLICATION LOGS (ML API)
+ ********************************************/
+local.file_match "ml_api_logs" {
+    path_targets = [{
+        __address__ = "localhost",
+        __path__    = "/var/log/mlops/*.log",
+    }]
+}
+
+loki.source.file "ml_api_logs" {
+    targets    = local.file_match.ml_api_logs.targets
+    forward_to = [loki.write.grafana_cloud_loki.receiver]
+    
+    // Parse JSON logs
+    stage.json {
+        expressions = {
+            level = "level",
+            msg   = "msg",
+        }
+    }
+    
+    stage.labels {
+        values = {
+            level = "",
+        }
+    }
+}
+
