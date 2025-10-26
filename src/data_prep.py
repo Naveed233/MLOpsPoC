@@ -121,72 +121,95 @@ def normalize_mlit_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def derive_features(df: pd.DataFrame) -> pd.DataFrame:
-    # transaction_date from period
-    df["transaction_date"] = df["period_raw"].apply(parse_period_to_date)
+    # transaction_date from period OR use existing transaction_date
+    if "transaction_date" not in df.columns and "period_raw" in df.columns:
+        df["transaction_date"] = df["period_raw"].apply(parse_period_to_date)
+    elif "transaction_date" in df.columns:
+        df["transaction_date"] = pd.to_datetime(df["transaction_date"], errors="coerce")
+    
+    # building age (build_year column from CSV)
+    if "build_year" in df.columns and "building_year" not in df.columns:
+        df["building_year"] = df["build_year"]
+    
+    if "building_age_years" not in df.columns:
+        df["building_age_years"] = np.where(
+            df["building_year"].notna() & df["transaction_date"].notna(),
+            df["transaction_date"].dt.year - df["building_year"].astype("Int64"),
+            np.nan,
+        )
+        df.loc[df["building_age_years"] < 0, "building_age_years"] = np.nan
 
-    # building age
-    df["building_age_years"] = np.where(
-        df["building_year"].notna() & df["transaction_date"].notna(),
-        df["transaction_date"].dt.year - df["building_year"].astype("Int64"),
-        np.nan,
-    )
-    df.loc[df["building_age_years"] < 0, "building_age_years"] = np.nan
-
-    # property_type (best-effort from type_raw and areas)
-    def infer_prop_type(row):
-        t = str(row.get("type_raw") or "").lower()
-        # very rough heuristics
-        if "土地" in t or "land" in t:
-            return "土地"
-        if (
-            "マンション" in t
-            or "condo" in t
-            or "共同住宅" in t
-            or (
-                pd.notna(row["total_floor_area_m2"])
-                and row["total_floor_area_m2"] > 0
-                and (pd.isna(row["area_m2"]) or row["area_m2"] < 10)
-            )
-        ):
-            return "マンション"
-        if "戸建" in t or "一戸建" in t or "detached" in t:
+    # property_type (use existing or infer)
+    if "property_type" not in df.columns:
+        def infer_prop_type(row):
+            t = str(row.get("type_raw") or "").lower()
+            # very rough heuristics
+            if "土地" in t or "land" in t:
+                return "土地"
+            if (
+                "マンション" in t
+                or "condo" in t
+                or "共同住宅" in t
+                or (
+                    pd.notna(row["total_floor_area_m2"])
+                    and row["total_floor_area_m2"] > 0
+                    and (pd.isna(row["area_m2"]) or row["area_m2"] < 10)
+                )
+            ):
+                return "マンション"
+            if "戸建" in t or "一戸建" in t or "detached" in t:
+                return "戸建て"
+            # fallback by shapes
+            if pd.notna(row["total_floor_area_m2"]) and row["total_floor_area_m2"] > 0:
+                return "マンション"
+            if pd.notna(row["area_m2"]) and row["area_m2"] > 0 and pd.isna(row["total_floor_area_m2"]):
+                return "土地"
             return "戸建て"
-        # fallback by shapes
-        if pd.notna(row["total_floor_area_m2"]) and row["total_floor_area_m2"] > 0:
-            return "マンション"
-        if pd.notna(row["area_m2"]) and row["area_m2"] > 0 and pd.isna(row["total_floor_area_m2"]):
-            return "土地"
-        return "戸建て"
 
-    df["property_type"] = df.apply(infer_prop_type, axis=1)
+        df["property_type"] = df.apply(infer_prop_type, axis=1)
 
     # unify structure labels a bit
-    def map_structure(s):
-        s = "" if pd.isna(s) else str(s)
-        if any(k in s for k in ["RC", "鉄筋コンクリート"]):
-            return "RC"
-        if any(k in s for k in ["SRC", "鉄骨鉄筋コンクリート"]):
-            return "SRC"
-        if any(k in s for k in ["木", "木造", "W"]):
-            return "木造"
-        if any(k in s for k in ["鉄骨", "S"]):
-            return "鉄骨"
-        return s or None
+    if "building_structure" in df.columns:
+        def map_structure(s):
+            s = "" if pd.isna(s) else str(s)
+            if any(k in s for k in ["RC", "鉄筋コンクリート"]):
+                return "RC"
+            if any(k in s for k in ["SRC", "鉄骨鉄筋コンクリート"]):
+                return "SRC"
+            if any(k in s for k in ["木", "木造", "W"]):
+                return "木造"
+            if any(k in s for k in ["鉄骨", "S"]):
+                return "鉄骨"
+            return s or None
 
-    df["building_structure"] = df["building_structure"].apply(map_structure)
+        df["building_structure"] = df["building_structure"].apply(map_structure)
 
     # choose a size feature that best represents value driver
-    df["effective_area_m2"] = np.where(
-        df["property_type"] == "マンション", df["total_floor_area_m2"], df["area_m2"]
-    )
+    if "effective_area_m2" not in df.columns:
+        if "total_floor_area_m2" in df.columns and "area_m2" in df.columns:
+            df["effective_area_m2"] = np.where(
+                df["property_type"] == "マンション", df["total_floor_area_m2"], df["area_m2"]
+            )
+        elif "exclusive_area_m2" in df.columns:
+            # For simulated data: use exclusive_area_m2
+            df["effective_area_m2"] = df["exclusive_area_m2"]
+        elif "area_m2" in df.columns:
+            df["effective_area_m2"] = df["area_m2"]
+        else:
+            df["effective_area_m2"] = df.get("total_floor_area_m2", pd.Series([50] * len(df)))
     # guardrails
     df["effective_area_m2"] = df["effective_area_m2"].clip(lower=10)
 
     # engineered buckets
-    df["age_bucket"] = pd.cut(
-        df["building_age_years"], bins=[-1, 5, 10, 20, 999], labels=["0-5", "5-10", "10-20", "20+"]
-    )
-    df["is_tokyo"] = (df["prefecture"].astype(str).str.contains("東京")).astype(int)
+    if "age_bucket" not in df.columns and "building_age_years" in df.columns:
+        df["age_bucket"] = pd.cut(
+            df["building_age_years"], bins=[-1, 5, 10, 20, 999], labels=["0-5", "5-10", "10-20", "20+"]
+        )
+    elif "age_bucket" not in df.columns:
+        df["age_bucket"] = "unknown"
+    
+    if "is_tokyo" not in df.columns:
+        df["is_tokyo"] = (df["prefecture"].astype(str).str.contains("東京")).astype(int)
 
     # price per sqm
     df["price_per_sqm"] = df["sale_price_yen"] / df["effective_area_m2"]
@@ -268,16 +291,18 @@ def main():
             print("[INFO] Creating synthetic sale_price_yen from ward_price_index_t")
             if "ward_price_index_t" in df_raw.columns and "exclusive_area_m2" in df_raw.columns:
                 # Use ward index as price proxy (scaled by area)
-                df["sale_price_yen"] = (
+                df_raw["sale_price_yen"] = (
                     df_raw["ward_price_index_t"].fillna(1.0) * 
                     df_raw["exclusive_area_m2"].fillna(50) * 
                     10_000_000  # Scale to realistic JPY range
                 )
             elif "ward_price_index_t" in df_raw.columns:
                 # Fallback: just use index * base
-                df["sale_price_yen"] = df_raw["ward_price_index_t"].fillna(1.0) * 50_000_000
+                df_raw["sale_price_yen"] = df_raw["ward_price_index_t"].fillna(1.0) * 50_000_000
             else:
                 raise SystemExit("[ERROR] Cannot infer sale_price_yen. Need ward_price_index_t column.")
+            # Now use the dataframe with synthetic price
+            df = df_raw.copy()
     else:
         df = normalize_mlit_columns(df_raw)
 
