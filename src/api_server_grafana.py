@@ -215,12 +215,12 @@ async def predict_price(request: PredictRequest):
         # Create input DataFrame
         X = pd.DataFrame([features])
 
-        # Add engineered features
+        # Add engineered features (must match training time bins!)
         X["is_tokyo"] = (X["prefecture"] == "東京都").astype(int)
         X["age_bucket"] = pd.cut(
             X["building_age_years"],
-            bins=[-np.inf, 5, 15, 30, np.inf],
-            labels=["0-5", "6-15", "16-30", "30+"],
+            bins=[-1, 5, 10, 20, 999],
+            labels=["0-5", "5-10", "10-20", "20+"],
         ).astype(str)
 
         # Make prediction
