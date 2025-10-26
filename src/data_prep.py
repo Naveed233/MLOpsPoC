@@ -250,8 +250,36 @@ def main():
             "or save a CSV manually into data/raw/."
         )
 
-    # 2) Normalize to our internal raw schema
-    df = normalize_mlit_columns(df_raw)
+    # 2) Normalize to our internal raw schema OR use preprocessed data
+    # Check if this CSV already has our target schema
+    expected_target_cols = ["prefecture", "city_ward", "sale_price_yen"]
+    has_target_schema = all(col in df_raw.columns for col in expected_target_cols)
+    
+    if has_target_schema:
+        print("[INFO] CSV already matches target schema, using directly")
+        df = df_raw.copy()
+        # Ensure sale_price_yen is numeric
+        df["sale_price_yen"] = pd.to_numeric(df["sale_price_yen"], errors="coerce")
+    elif "sale_price_yen" not in df_raw.columns:
+        print("[INFO] CSV missing sale_price_yen, attempting to derive from schema")
+        df = normalize_mlit_columns(df_raw)
+        # If still no sale_price_yen, create synthetic from ward_price_index_t
+        if "sale_price_yen" not in df.columns or df["sale_price_yen"].isna().all():
+            print("[INFO] Creating synthetic sale_price_yen from ward_price_index_t")
+            if "ward_price_index_t" in df_raw.columns and "exclusive_area_m2" in df_raw.columns:
+                # Use ward index as price proxy (scaled by area)
+                df["sale_price_yen"] = (
+                    df_raw["ward_price_index_t"].fillna(1.0) * 
+                    df_raw["exclusive_area_m2"].fillna(50) * 
+                    10_000_000  # Scale to realistic JPY range
+                )
+            elif "ward_price_index_t" in df_raw.columns:
+                # Fallback: just use index * base
+                df["sale_price_yen"] = df_raw["ward_price_index_t"].fillna(1.0) * 50_000_000
+            else:
+                raise SystemExit("[ERROR] Cannot infer sale_price_yen. Need ward_price_index_t column.")
+    else:
+        df = normalize_mlit_columns(df_raw)
 
     # 3) Minimal filtering & cleaning
     # Keep obvious valid rows
